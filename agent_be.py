@@ -7,9 +7,7 @@ import arxiv
 import json
 from typing import List, Dict
 import asyncio
-
-# Initialize Groq Client
-model_client = GroqChatCompletionClient()
+import os
 
 # Tool function to fetch papers from arXiv
 def get_papers_sync(query: str, max_results: int = 5) -> str:
@@ -34,44 +32,6 @@ def get_papers_sync(query: str, max_results: int = 5) -> str:
         print(f"Error fetching papers: {e}")
         return json.dumps([])
     return json.dumps(papers, indent=2)
-
-# Create AutoGen FunctionTool
-get_papers_tool = FunctionTool(
-    get_papers_sync,
-    name="get_papers",
-    description="Fetch academic papers from arXiv based on a search query"
-)
-
-# Researcher Agent with tool
-researcher_agent = AssistantAgent(
-    name="researcher",
-    model_client=model_client,
-    system_message=(
-        "You are a research assistant. When given a topic, use the get_papers tool to fetch relevant papers from arXiv. "
-        "After fetching the papers, return them as a properly formatted JSON array containing title, authors, "
-        "published date, summary, and pdf_url for each paper. "
-        "Always use the get_papers tool first, then format the response."
-    ),
-    tools=[get_papers_tool]
-)
-
-# Summarizer Agent
-summarizer_agent = AssistantAgent(
-    name="summarizer",
-    model_client=model_client,
-    system_message=(
-        "You are an expert academic researcher who creates literature reviews. "
-        "When given a JSON array of papers, create a comprehensive markdown literature review with:\n"
-        "1. A brief introduction (2-3 sentences) about the research topic\n"
-        "2. For each paper, create a section with:\n"
-        "   - Title as a markdown link to the PDF\n" 
-        "   - Authors and publication date\n"
-        "   - Key problem addressed\n"
-        "   - Main contributions and findings\n"
-        "3. A conclusion summarizing key themes and future research directions\n\n"
-        "Make it professional and academic in tone."
-    )
-)
 
 # Helper function to create formatted literature review
 def create_formatted_review(topic: str, papers_json: str) -> str:
@@ -153,15 +113,92 @@ All papers are available through arXiv and can be accessed via the provided link
 # Simplified Literature Review System
 class LitReviewSystem:
     def __init__(self):
-        self.researcher = researcher_agent
-        self.summarizer = summarizer_agent
+        self.model_client = None
+        self.researcher = None
+        self.summarizer = None
         self.papers_data = None
+
+    def _get_api_key(self):
+        """Get API key from multiple sources"""
+        api_key = None
+        
+        # Try environment variable first
+        api_key = os.getenv("GROQ_API_KEY")
+        if api_key and api_key.strip():
+            return api_key.strip()
+        
+        # Try streamlit session state
+        try:
+            import streamlit as st
+            if hasattr(st, 'session_state') and 'groq_api_key' in st.session_state:
+                session_key = st.session_state.groq_api_key
+                if session_key and session_key.strip():
+                    # Set environment variable for consistency
+                    os.environ["GROQ_API_KEY"] = session_key.strip()
+                    return session_key.strip()
+        except ImportError:
+            pass
+            
+        return None
+
+    def _initialize_clients(self):
+        """Initialize clients only when needed"""
+        if self.model_client is None:
+            # Get API key
+            api_key = self._get_api_key()
+            
+            if not api_key:
+                raise ValueError("GROQ_API_KEY is not available. Please set it in environment variables or Streamlit session state.")
+            
+            # Initialize Groq Client with explicit API key
+            self.model_client = GroqChatCompletionClient(api_key=api_key)
+            
+            # Create AutoGen FunctionTool
+            get_papers_tool = FunctionTool(
+                get_papers_sync,
+                name="get_papers",
+                description="Fetch academic papers from arXiv based on a search query"
+            )
+            
+            # Researcher Agent with tool
+            self.researcher = AssistantAgent(
+                name="researcher",
+                model_client=self.model_client,
+                system_message=(
+                    "You are a research assistant. When given a topic, use the get_papers tool to fetch relevant papers from arXiv. "
+                    "After fetching the papers, return them as a properly formatted JSON array containing title, authors, "
+                    "published date, summary, and pdf_url for each paper. "
+                    "Always use the get_papers tool first, then format the response."
+                ),
+                tools=[get_papers_tool]
+            )
+            
+            # Summarizer Agent
+            self.summarizer = AssistantAgent(
+                name="summarizer",
+                model_client=self.model_client,
+                system_message=(
+                    "You are an expert academic researcher who creates literature reviews. "
+                    "When given a JSON array of papers, create a comprehensive markdown literature review with:\n"
+                    "1. A brief introduction (2-3 sentences) about the research topic\n"
+                    "2. For each paper, create a section with:\n"
+                    "   - Title as a markdown link to the PDF\n" 
+                    "   - Authors and publication date\n"
+                    "   - Key problem addressed\n"
+                    "   - Main contributions and findings\n"
+                    "3. A conclusion summarizing key themes and future research directions\n\n"
+                    "Make it professional and academic in tone."
+                )
+            )
 
     async def run_stream(self, task: str):
         """Custom run method for literature review workflow"""
         topic = task.replace("Conduct a literature review on the topic: ", "")
         
         try:
+            # Initialize clients if needed
+            self._initialize_clients()
+            
             # Step 1: Researcher fetches papers
             # Call the tool directly for more reliable results
             papers_json = get_papers_sync(topic, 5)
@@ -173,7 +210,7 @@ class LitReviewSystem:
             self.papers_data = papers_json
             
             # Step 2: Create formatted review
-            # Option 1: Try using the AI agent for more sophisticated review
+            # Option 1: Try using the AI model client directly for more sophisticated review
             try:
                 summarizer_prompt = f"""Create a comprehensive academic literature review for the topic '{topic}'. 
 
@@ -187,8 +224,9 @@ Please create a professional literature review with:
 
 Format it in clean markdown."""
 
+                # Create messages in the format expected by Groq API
                 formatted_messages = [{"role": "user", "content": summarizer_prompt}]
-                response = await self.summarizer.model_client.create(formatted_messages)
+                response = await self.model_client.create(formatted_messages)
                 ai_review = response.choices[0].message.content
                 
                 # Clean up the AI response
@@ -199,10 +237,13 @@ Format it in clean markdown."""
                     
             except Exception as model_error:
                 print(f"AI model error: {model_error}")
-                # Option 2: Use formatted template
+                # Option 2: Use formatted template as fallback
                 formatted_review = create_formatted_review(topic, papers_json)
                 yield TextMessage(content=formatted_review, source="summarizer")
             
+        except ValueError as ve:
+            # Handle API key error specifically
+            yield TextMessage(content=f"❌ Configuration Error: {str(ve)}", source="system")
         except Exception as e:
             yield TextMessage(content=f"❌ Error: {str(e)}", source="system")
 
