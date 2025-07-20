@@ -1,0 +1,10 @@
+autogen-agentchat
+autogen-core
+autogen-ext
+streamlit
+arxiv-py
+httpx
+tiktoken
+python-dotenv
+reportlab 
+markdown
