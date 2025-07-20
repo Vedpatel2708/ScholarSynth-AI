@@ -150,8 +150,12 @@ class LitReviewSystem:
             if not api_key:
                 raise ValueError("GROQ_API_KEY is not available. Please set it in environment variables or Streamlit session state.")
             
-            # Initialize Groq Client with explicit API key
-            self.model_client = GroqChatCompletionClient(api_key=api_key)
+            # Set the API key in environment variable so GroqChatCompletionClient can find it
+            os.environ["GROQ_API_KEY"] = api_key
+            
+            # Initialize Groq Client - let it get the API key from environment
+            # Use default model or specify one
+            self.model_client = GroqChatCompletionClient(model="llama-3.3-70b-versatile")
             
             # Create AutoGen FunctionTool
             get_papers_tool = FunctionTool(
