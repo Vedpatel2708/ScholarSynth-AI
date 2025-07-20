@@ -2,7 +2,7 @@ autogen-agentchat
 autogen-core
 autogen-ext
 streamlit
-arxiv-py
+arxiv
 httpx
 tiktoken
 python-dotenv
