@@ -193,27 +193,6 @@ if run_btn and query and has_api_key:
                 st.error(f"❌ Error: {error_msg}")
                 st.info("Please check your internet connection and try again")
 
-# Example queries
-st.markdown("---")
-st.subheader("💡 Example Research Topics")
-example_col1, example_col2, example_col3 = st.columns(3)
-
-with example_col1:
-    if st.button("🧠 Neural Networks", help="Click to use this topic"):
-        st.session_state.example_query = "neural networks deep learning"
-
-with example_col2:
-    if st.button("🔬 Quantum Computing", help="Click to use this topic"):
-        st.session_state.example_query = "quantum computing algorithms"
-
-with example_col3:
-    if st.button("🤖 Reinforcement Learning", help="Click to use this topic"):
-        st.session_state.example_query = "reinforcement learning applications"
-
-# Handle example query selection
-if 'example_query' in st.session_state:
-    st.rerun()
-
 # Footer
 st.markdown("---")
 st.markdown(
