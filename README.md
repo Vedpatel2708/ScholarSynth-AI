@@ -1,6 +1,6 @@
 # ScholarSynth AI - Literature Review Generator
 
-A simple web application that automatically generates literature reviews using AI agents and arXiv papers.
+A simple web application that automatically generates literature reviews using AI agents,Autogen and arXiv papers.
 
 ## What it does
 
